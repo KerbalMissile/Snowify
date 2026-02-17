@@ -63,6 +63,10 @@ npm start
 - [x] Smart queue — auto-fills with similar songs when not playing an album/playlist and the queue runs out
 - [x] Lyrics page with synced lyrics (Spotify-like)
 - [x] Drag and drop songs into playlists
+- [ ] Discord RPC
+- [ ] Follow Artist feature
+- [ ] Upcoming Releases of followed artists
+- [ ] See Music Videos for Songs and list music videos in artist page
 
 ## Legal
 
