@@ -1,4 +1,4 @@
-# Snowfy ❄️
+# Snowfy
 
 A desktop music player built with Electron that streams audio from YouTube Music. Clean UI, no accounts, no ads.
 
@@ -59,9 +59,9 @@ npm start
 
 ## Roadmap
 
-- [ ] Song recommendations
+- [x] Song recommendations
 - [ ] Artist recommendations
-- [ ] Smart queue — auto-fills with similar songs when not playing an album/playlist or the queue runs out
+- [x] Smart queue — auto-fills with similar songs when not playing an album/playlist and the queue runs out
 - [ ] Lyrics page with synced lyrics (Spotify-like)
 - [ ] Drag and drop songs into playlists
 

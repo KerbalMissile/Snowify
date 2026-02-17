@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('snowfy', {
   getStreamUrl: (videoUrl, quality) => ipcRenderer.invoke('yt:getStreamUrl', videoUrl, quality),
   artistInfo: (artistId) => ipcRenderer.invoke('yt:artistInfo', artistId),
   albumTracks: (albumId) => ipcRenderer.invoke('yt:albumTracks', albumId),
+  getUpNexts: (videoId) => ipcRenderer.invoke('yt:getUpNexts', videoId),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   // Playlist covers

@@ -454,6 +454,10 @@
 
     let nextIdx = state.queueIndex + 1;
     if (nextIdx >= state.queue.length) {
+      if (state.autoplay) {
+        smartQueueFill();
+        return;
+      }
       state.isPlaying = false;
       updatePlayButton();
       return;
@@ -461,6 +465,63 @@
     state.queueIndex = nextIdx;
     playTrack(state.queue[nextIdx]);
     renderQueue();
+  }
+
+  async function smartQueueFill() {
+    const current = state.queue[state.queueIndex];
+    if (!current) return;
+
+    showToast('Smart queue: finding similar songs...');
+
+    try {
+      const queueIds = new Set(state.queue.map(t => t.id));
+      const seen = new Set();
+      let pool = [];
+
+      const addToPool = (tracks) => {
+        tracks.forEach(t => {
+          if (!queueIds.has(t.id) && !seen.has(t.id)) {
+            seen.add(t.id);
+            pool.push(t);
+          }
+        });
+      };
+
+      // 1. YouTube Music's "Up Next" — genre-aware recommendations from different artists
+      const upNexts = await window.snowfy.getUpNexts(current.id);
+      addToPool(upNexts);
+
+      // 2. Current artist's top songs as extra padding
+      if (pool.length < 10 && current.artistId) {
+        const info = await window.snowfy.artistInfo(current.artistId);
+        if (info) addToPool(info.topSongs || []);
+      }
+
+      if (!pool.length) {
+        showToast('Smart queue: no similar songs found');
+        state.isPlaying = false;
+        updatePlayButton();
+        return;
+      }
+
+      // Shuffle and take up to 20
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      const newTracks = pool.slice(0, 20);
+
+      state.queue.push(...newTracks);
+      state.queueIndex++;
+      playTrack(state.queue[state.queueIndex]);
+      renderQueue();
+      showToast(`Smart queue: added ${newTracks.length} songs`);
+    } catch (err) {
+      console.error('Smart queue error:', err);
+      showToast('Smart queue failed');
+      state.isPlaying = false;
+      updatePlayButton();
+    }
   }
 
   function playPrev() {
@@ -1207,6 +1268,7 @@
   function renderHome() {
     renderRecentTracks();
     renderQuickPicks();
+    renderRecommendations();
   }
 
   function renderRecentTracks() {
@@ -1262,6 +1324,82 @@
         if (track) playFromList([track], 0);
       });
     });
+  }
+
+  async function renderRecommendations() {
+    const songsSection = $('#recommended-songs-section');
+    const songsContainer = $('#recommended-songs');
+
+    // Gather artist play counts from recent + liked
+    const allTracks = [...state.recentTracks, ...state.likedSongs];
+    if (!allTracks.length) {
+      songsSection.style.display = 'none';
+      return;
+    }
+
+    const artistCounts = {};
+    allTracks.forEach(t => {
+      if (t.artistId) {
+        if (!artistCounts[t.artistId]) artistCounts[t.artistId] = { name: t.artist, artistId: t.artistId, count: 0 };
+        artistCounts[t.artistId].count++;
+      }
+    });
+
+    const topArtists = Object.values(artistCounts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
+    if (!topArtists.length) return;
+
+    // Fetch artist info for the top listened artists
+    const knownTrackIds = new Set(allTracks.map(t => t.id));
+    const recommendedSongs = [];
+
+    const results = await Promise.allSettled(
+      topArtists.map(a => window.snowfy.artistInfo(a.artistId))
+    );
+
+    results.forEach(r => {
+      if (r.status !== 'fulfilled' || !r.value) return;
+      const info = r.value;
+
+      // Songs: pick tracks user hasn't played yet
+      (info.topSongs || []).forEach(song => {
+        if (!knownTrackIds.has(song.id) && recommendedSongs.length < 8) {
+          recommendedSongs.push(song);
+          knownTrackIds.add(song.id);
+        }
+      });
+    });
+
+    // Render recommended songs
+    if (recommendedSongs.length) {
+      songsSection.style.display = '';
+      songsContainer.innerHTML = recommendedSongs.map(track => `
+        <div class="track-card" data-track-id="${track.id}">
+          <img class="card-thumb" src="${escapeHtml(track.thumbnail)}" alt="" loading="lazy" />
+          <div class="card-title">${escapeHtml(track.title)}</div>
+          <div class="card-artist">${escapeHtml(track.artist)}</div>
+          <button class="card-play" title="Play">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
+          </button>
+        </div>
+      `).join('');
+
+      songsContainer.querySelectorAll('.track-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const track = recommendedSongs.find(t => t.id === card.dataset.trackId);
+          if (track) playFromList([track], 0);
+        });
+        card.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const track = recommendedSongs.find(t => t.id === card.dataset.trackId);
+          if (track) showContextMenu(e, track);
+        });
+      });
+    } else {
+      songsSection.style.display = 'none';
+    }
   }
 
   document.addEventListener('keydown', (e) => {

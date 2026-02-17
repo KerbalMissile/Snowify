@@ -219,6 +219,28 @@ ipcMain.handle('yt:getStreamUrl', async (_event, videoUrl, quality) => {
   });
 });
 
+ipcMain.handle('yt:getUpNexts', async (_event, videoId) => {
+  try {
+    const results = await ytmusic.getUpNexts(videoId);
+    if (!Array.isArray(results)) return [];
+    return results
+      .filter(r => r.videoId)
+      .map(r => ({
+        id: r.videoId,
+        title: r.title || r.name || 'Unknown',
+        artist: r.artists || r.artist?.name || 'Unknown Artist',
+        artistId: r.artist?.artistId || null,
+        thumbnail: r.thumbnail || getSquareThumbnail(r.thumbnails || []),
+        duration: r.duration || '0:00',
+        durationMs: 0,
+        url: `https://music.youtube.com/watch?v=${r.videoId}`
+      }));
+  } catch (err) {
+    console.error('getUpNexts error:', err);
+    return [];
+  }
+});
+
 // ─── Playlist Cover Image Management ───
 
 function getCoversDir() {
