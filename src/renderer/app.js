@@ -141,7 +141,7 @@
     searchInput.focus();
   });
 
-  // Music only is always on (hardcoded) for filtering quality
+  // filtering
   state.musicOnly = true;
 
   function renderSearchEmpty() {
@@ -155,8 +155,12 @@
   async function performSearch(query) {
     searchResults.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
     try {
-      const results = await window.snowfy.search(query, state.musicOnly);
-      if (!results.length) {
+      const [results, artists] = await Promise.all([
+        window.snowfy.search(query, state.musicOnly),
+        window.snowfy.searchArtists(query)
+      ]);
+
+      if (!results.length && !artists.length) {
         searchResults.innerHTML = `
           <div class="empty-state">
             <p>No results found for "${escapeHtml(query)}"</p>
@@ -164,55 +168,40 @@
         return;
       }
 
-      // Find the top artist from search results
-      const artistCounts = {};
-      results.forEach(t => {
-        if (t.artistId) {
-          if (!artistCounts[t.artistId]) artistCounts[t.artistId] = { name: t.artist, artistId: t.artistId, count: 0 };
-          artistCounts[t.artistId].count++;
-        }
-      });
-      const topArtist = Object.values(artistCounts).sort((a, b) => b.count - a.count)[0];
+      searchResults.innerHTML = '';
 
-      let artistCardHtml = '';
-      const topArtistId = topArtist?.artistId || '';
-      if (topArtist && topArtist.count >= 2) {
-        artistCardHtml = `
-          <h3 class="search-section-header">Artist</h3>
-          <div class="artist-result-card" data-artist-id="${escapeHtml(topArtistId)}">
-            <img class="artist-result-avatar" id="search-artist-avatar" src="" alt="" />
+      // Show top matching artist
+      const topArtist = artists[0];
+      if (topArtist) {
+        const artistSection = document.createElement('div');
+        artistSection.innerHTML = `
+          <h3 class="search-section-header">Artists</h3>
+          <div class="artist-result-card" data-artist-id="${escapeHtml(topArtist.artistId)}">
+            <img class="artist-result-avatar" src="${escapeHtml(topArtist.thumbnail || '')}" alt="" />
             <div class="artist-result-info">
               <div class="artist-result-name">${escapeHtml(topArtist.name)}</div>
               <div class="artist-result-label">Artist</div>
             </div>
-          </div>
-          <h3 class="search-section-header">Songs</h3>`;
-      }
+          </div>`;
+        searchResults.appendChild(artistSection);
 
-      // Insert artist card above, then render track list directly (preserves drag listeners)
-      if (artistCardHtml) {
-        const artistHeader = document.createElement('div');
-        artistHeader.innerHTML = artistCardHtml;
-        searchResults.innerHTML = '';
-        searchResults.appendChild(artistHeader);
-      } else {
-        searchResults.innerHTML = '';
-      }
-      renderTrackList(searchResults, results, 'search');
-
-      searchResults.querySelectorAll('.artist-result-card').forEach(card => {
-        card.addEventListener('click', () => {
-          const id = card.dataset.artistId;
-          if (id) openArtistPage(id);
+        artistSection.querySelectorAll('.artist-result-card').forEach(card => {
+          card.addEventListener('click', () => {
+            const id = card.dataset.artistId;
+            if (id) openArtistPage(id);
+          });
         });
-      });
+      }
 
-      // Fetch real artist avatar asynchronously
-      if (topArtistId) {
-        window.snowfy.artistInfo(topArtistId).then(info => {
-          const avatarEl = document.getElementById('search-artist-avatar');
-          if (avatarEl && info?.avatar) avatarEl.src = info.avatar;
-        }).catch(() => {});
+      // Show songs
+      if (results.length) {
+        const songsHeader = document.createElement('div');
+        songsHeader.innerHTML = `<h3 class="search-section-header">Songs</h3>`;
+        searchResults.appendChild(songsHeader);
+
+        const tracksWrapper = document.createElement('div');
+        searchResults.appendChild(tracksWrapper);
+        renderTrackList(tracksWrapper, results, 'search');
       }
     } catch (err) {
       searchResults.innerHTML = `<div class="empty-state"><p>Search failed. Please try again.</p></div>`;
@@ -393,7 +382,7 @@
     try {
       const directUrl = await window.snowfy.getStreamUrl(track.url, state.audioQuality);
       audio.src = directUrl;
-      audio.volume = state.volume;
+      audio.volume = state.volume * 0.5;
       audio.load();
       await audio.play();
       state.isPlaying = true;
@@ -668,7 +657,7 @@
 
   function setVolume(vol) {
     state.volume = Math.max(0, Math.min(1, vol));
-    audio.volume = state.volume;
+    audio.volume = state.volume * 0.5;
     volumeFill.style.width = (state.volume * 100) + '%';
     const isMuted = state.volume === 0;
     $('.vol-icon', btnVolume).classList.toggle('hidden', isMuted);
