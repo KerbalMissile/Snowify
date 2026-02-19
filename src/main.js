@@ -627,7 +627,7 @@ ipcMain.handle('yt:searchArtists', async (_event, query) => {
 });
 
 ipcMain.handle('yt:getStreamUrl', async (_event, videoUrl, quality) => {
-  const fmt = quality === 'worstaudio' ? 'worstaudio' : 'bestaudio';
+  const fmt = quality === 'worstaudio' ? 'worstaudio/worstaudio*/worst' : 'bestaudio/bestaudio*/best';
   return new Promise((resolve, reject) => {
     execFile(getYtDlpPath(), [
       '-f', fmt,
