@@ -95,7 +95,7 @@ function mapSongToTrack(song) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1300,
+    width: 1500,
     height: 860,
     minWidth: 900,
     minHeight: 600,

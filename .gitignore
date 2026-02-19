@@ -3,4 +3,4 @@ dist/
 bin/
 .DS_Store
 *.log
-.github/
+copilot-instructions.md
