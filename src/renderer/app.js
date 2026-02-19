@@ -242,12 +242,13 @@
   }
 
   function renderTrackList(container, tracks, context) {
+    const showDuration = tracks.some(t => t.duration);
     let html = `
-      <div class="track-list-header">
+      <div class="track-list-header${showDuration ? '' : ' no-duration'}">
         <span>#</span>
         <span>Title</span>
         <span>Artist</span>
-        <span style="text-align:right">Duration</span>
+        ${showDuration ? '<span style="text-align:right">Duration</span>' : ''}
       </div>`;
 
     tracks.forEach((track, i) => {
@@ -255,7 +256,7 @@
       const isLiked = state.likedSongs.some(t => t.id === track.id);
 
       html += `
-        <div class="track-row ${isPlaying ? 'playing' : ''}" 
+        <div class="track-row ${isPlaying ? 'playing' : ''}${showDuration ? '' : ' no-duration'}"
              data-track-id="${track.id}" data-context="${context}" data-index="${i}" draggable="true">
           <div class="track-num">
             <span class="track-num-text">${isPlaying ? '♫' : i + 1}</span>
@@ -272,7 +273,7 @@
           <div class="track-artist-col">${track.artistId
             ? `<span class="artist-link" data-artist-id="${escapeHtml(track.artistId)}">${escapeHtml(track.artist)}</span>`
             : escapeHtml(track.artist)}</div>
-          <div class="track-duration">${track.duration}</div>
+          ${showDuration ? `<div class="track-duration">${track.duration}</div>` : ''}
         </div>`;
     });
 
