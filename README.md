@@ -79,7 +79,7 @@ npm start
 - [ ] Upcoming Releases from followed artists
 - [x] Recent Releases from followed artists
 - [x] Watch Music Videos in-app
-- [ ] Spotify playlists migration support
+- [x] Spotify playlists migration support
 - [x] "Fans might also like" section in artists page
 - [x] Monthly audience stat per artist
 - [x] Cloud sync

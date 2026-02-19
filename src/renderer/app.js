@@ -411,7 +411,7 @@
     try {
       const directUrl = await window.snowify.getStreamUrl(track.url, state.audioQuality);
       audio.src = directUrl;
-      audio.volume = state.volume * 0.5;
+      audio.volume = state.volume * 0.3;
       audio.load();
       await audio.play();
       state.isPlaying = true;
@@ -423,7 +423,21 @@
       console.error('Playback error:', err);
       const msg = typeof err === 'string' ? err : (err.message || 'unknown error');
       showToast('Playback failed: ' + msg);
+      state.isPlaying = false;
       state.isLoading = false;
+      updatePlayButton();
+      updateTrackHighlight();
+      // Auto-advance to next track on failure (avoid infinite loop via flag)
+      if (!playTrack._skipAdvance) {
+        const nextIdx = state.queueIndex + 1;
+        if (nextIdx < state.queue.length) {
+          playTrack._skipAdvance = true;
+          state.queueIndex = nextIdx;
+          playTrack(state.queue[nextIdx]).finally(() => { playTrack._skipAdvance = false; });
+          renderQueue();
+        }
+      }
+      return;
     }
     updatePlayButton();
     updateTrackHighlight();
@@ -451,7 +465,7 @@
   function playNext() {
     if (!state.queue.length) return;
 
-    if (state.repeat === 'all') {
+    if (state.repeat === 'one') {
       audio.currentTime = 0;
       audio.play();
       state.isPlaying = true;
@@ -459,20 +473,12 @@
       return;
     }
 
-    if (state.repeat === 'one') {
-      audio.currentTime = 0;
-      audio.play();
-      state.isPlaying = true;
-      updatePlayButton();
-      state.repeat = 'off';
-      btnRepeat.classList.remove('active');
-      btnRepeat.title = 'Repeat';
-      btnRepeat.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/>
-          <path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
-        </svg>`;
-      saveState();
+    if (state.repeat === 'all') {
+      let nextIdx = state.queueIndex + 1;
+      if (nextIdx >= state.queue.length) nextIdx = 0;
+      state.queueIndex = nextIdx;
+      playTrack(state.queue[nextIdx]);
+      renderQueue();
       return;
     }
 
@@ -622,8 +628,42 @@
     state.isLoading = false;
     updatePlayButton();
     clearDiscordPresence();
-    showToast('Audio error — try playing again or pick another track');
+    showToast('Audio error — skipping to next track');
+    // Auto-advance on audio error
+    const nextIdx = state.queueIndex + 1;
+    if (nextIdx < state.queue.length) {
+      state.queueIndex = nextIdx;
+      playTrack(state.queue[nextIdx]);
+      renderQueue();
+    }
   });
+
+  // ─── Playback watchdog ───
+  let _watchdogLastTime = -1;
+  let _watchdogStallTicks = 0;
+  const _watchdogHandle = setInterval(() => {
+    // Only check when we think we're playing
+    if (!state.isPlaying || state.isLoading || audio.paused) {
+      _watchdogLastTime = -1;
+      _watchdogStallTicks = 0;
+      return;
+    }
+    const ct = audio.currentTime;
+    if (_watchdogLastTime >= 0 && ct === _watchdogLastTime && ct > 0) {
+      _watchdogStallTicks++;
+      // ~8 seconds stalled, audio is stuck
+      if (_watchdogStallTicks >= 4) {
+        console.warn('Watchdog: playback stalled at', ct, '— advancing');
+        _watchdogStallTicks = 0;
+        _watchdogLastTime = -1;
+        showToast('Stream stalled — skipping to next');
+        playNext();
+      }
+    } else {
+      _watchdogStallTicks = 0;
+    }
+    _watchdogLastTime = ct;
+  }, 2000);
 
   $('#btn-play-pause').addEventListener('click', togglePlay);
   $('#btn-next').addEventListener('click', playNext);
@@ -668,7 +708,7 @@
 
   function updateRepeatButton() {
     if (state.repeat === 'one') {
-      btnRepeat.title = 'Repeat Once';
+      btnRepeat.title = 'Repeat One';
       btnRepeat.innerHTML = `
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/>
@@ -676,7 +716,7 @@
           <text x="12" y="15" text-anchor="middle" font-size="8" fill="currentColor" stroke="none" font-weight="bold">1</text>
         </svg>`;
     } else if (state.repeat === 'all') {
-      btnRepeat.title = 'Repeat (looping current track)';
+      btnRepeat.title = 'Repeat All';
       btnRepeat.innerHTML = `
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/>
@@ -729,7 +769,7 @@
 
   function setVolume(vol) {
     state.volume = Math.max(0, Math.min(1, vol));
-    audio.volume = state.volume * 0.5;
+    audio.volume = state.volume * 0.3;
     volumeFill.style.width = (state.volume * 100) + '%';
     const isMuted = state.volume === 0;
     $('.vol-icon', btnVolume).classList.toggle('hidden', isMuted);
@@ -2290,7 +2330,7 @@
       if (result.audioUrl) {
         // Split streams: sync a separate audio element
         _videoAudio = new Audio(result.audioUrl);
-        _videoAudio.volume = state.volume * 0.5;
+        _videoAudio.volume = state.volume * 0.3;
 
         videoPlayer.muted = true;
 
@@ -2534,7 +2574,7 @@
       const dr = $('#setting-discord-rpc'); if (dr) dr.checked = state.discordRpc;
       document.documentElement.classList.toggle('no-animations', !state.animations);
       document.documentElement.classList.toggle('no-effects', !state.effects);
-      audio.volume = state.volume * 0.5;
+      audio.volume = state.volume * 0.3;
       showToast('Synced from cloud');
       return true;
     }
