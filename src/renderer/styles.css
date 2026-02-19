@@ -649,6 +649,14 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.track-card .card-artist.clickable {
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.track-card .card-artist.clickable:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
 .track-card .card-play {
   position: absolute;
   bottom: 80px;
@@ -1796,6 +1804,14 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.album-card-artist.clickable {
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.album-card-artist.clickable:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 .album-card-play {
   position: absolute;

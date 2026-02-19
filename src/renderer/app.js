@@ -1503,14 +1503,15 @@
       const seen = new Set();
       const releases = [];
 
-      results.forEach(r => {
+      results.forEach((r, i) => {
         if (r.status !== 'fulfilled' || !r.value) return;
         const info = r.value;
+        const followedArtistId = state.followedArtists[i].artistId;
         const all = [...(info.topAlbums || []), ...(info.topSingles || [])];
         all.forEach(rel => {
           if (rel.year >= currentYear && !seen.has(rel.albumId)) {
             seen.add(rel.albumId);
-            releases.push({ ...rel, artistName: info.name });
+            releases.push({ ...rel, artistName: info.name, artistId: followedArtistId });
           }
         });
       });
@@ -1538,7 +1539,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
         </button>
         <div class="album-card-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>
-        <div class="album-card-meta">${[a.artistName || '', a.year, a.type].filter(Boolean).join(' \u00B7 ')}</div>
+        <div class="album-card-meta">${a.artistId ? `<span class="album-card-artist clickable" data-artist-id="${escapeHtml(a.artistId)}">${escapeHtml(a.artistName || '')}</span>` : escapeHtml(a.artistName || '')}${a.year ? ' \u00B7 ' + a.year : ''}${a.type ? ' \u00B7 ' + a.type : ''}</div>
       </div>
     `).join('');
 
@@ -1549,6 +1550,10 @@
         e.stopPropagation();
         const album = await window.snowify.albumTracks(albumId);
         if (album && album.tracks.length) playFromList(album.tracks, 0);
+      });
+      card.querySelector('.album-card-artist.clickable')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openArtistPage(e.currentTarget.dataset.artistId);
       });
       card.addEventListener('click', () => showAlbumDetail(albumId, meta));
       card.addEventListener('contextmenu', (e) => {
@@ -1573,7 +1578,7 @@
       <div class="track-card" data-track-id="${track.id}" draggable="true">
         <img class="card-thumb" src="${escapeHtml(track.thumbnail)}" alt="" loading="lazy" />
         <div class="card-title">${escapeHtml(track.title)}</div>
-        <div class="card-artist">${escapeHtml(track.artist)}</div>
+        <div class="card-artist${track.artistId ? ' clickable' : ''}" ${track.artistId ? `data-artist-id="${escapeHtml(track.artistId)}"` : ''}>${escapeHtml(track.artist)}</div>
         <button class="card-play" title="Play">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
         </button>
@@ -1584,6 +1589,10 @@
       card.addEventListener('click', () => {
         const track = state.recentTracks.find(t => t.id === card.dataset.trackId);
         if (track) playFromList([track], 0);
+      });
+      card.querySelector('.card-artist.clickable')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openArtistPage(e.currentTarget.dataset.artistId);
       });
       card.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -1684,7 +1693,7 @@
         <div class="track-card" data-track-id="${track.id}" draggable="true">
           <img class="card-thumb" src="${escapeHtml(track.thumbnail)}" alt="" loading="lazy" />
           <div class="card-title">${escapeHtml(track.title)}</div>
-          <div class="card-artist">${escapeHtml(track.artist)}</div>
+          <div class="card-artist${track.artistId ? ' clickable' : ''}" ${track.artistId ? `data-artist-id="${escapeHtml(track.artistId)}"` : ''}>${escapeHtml(track.artist)}</div>
           <button class="card-play" title="Play">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
           </button>
@@ -1695,6 +1704,10 @@
         card.addEventListener('click', () => {
           const track = recommendedSongs.find(t => t.id === card.dataset.trackId);
           if (track) playFromList([track], 0);
+        });
+        card.querySelector('.card-artist.clickable')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openArtistPage(e.currentTarget.dataset.artistId);
         });
         card.addEventListener('contextmenu', (e) => {
           e.preventDefault();
