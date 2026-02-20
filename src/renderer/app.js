@@ -2953,7 +2953,8 @@
         animations: state.animations,
         effects: state.effects,
         theme: state.theme,
-        discordRpc: state.discordRpc
+        discordRpc: state.discordRpc,
+        country: state.country
       };
       const result = await window.snowify.cloudSave(data);
       if (result?.error) console.error('Cloud save failed:', result.error);
@@ -2985,6 +2986,7 @@
       state.effects = cloud.effects ?? state.effects;
       state.theme = cloud.theme || state.theme;
       state.discordRpc = cloud.discordRpc ?? state.discordRpc;
+      state.country = cloud.country || state.country;
       // Pause cloud save so saveState() doesn't push old data back up
       _cloudSyncPaused = true;
       saveState();
@@ -3100,7 +3102,8 @@
       animations: state.animations,
       effects: state.effects,
       theme: state.theme,
-      discordRpc: state.discordRpc
+      discordRpc: state.discordRpc,
+      country: state.country
     };
     const result = await window.snowify.cloudSave(data);
     if (result?.error) console.error('Cloud save failed:', result.error);
