@@ -1472,7 +1472,22 @@
     renderHome();
   }
 
-  function renderHome() {
+  async function renderHome() {
+    // Backfill missing artistIds in recent tracks
+    const needsId = state.recentTracks.filter(t => t.artist && !t.artistId);
+    if (needsId.length) {
+      const uniqueNames = [...new Set(needsId.map(t => t.artist))];
+      const lookups = await Promise.all(uniqueNames.map(n => window.snowify.searchArtists(n).catch(() => [])));
+      const nameToId = {};
+      uniqueNames.forEach((name, i) => {
+        if (lookups[i]?.length) nameToId[name] = lookups[i][0].artistId;
+      });
+      let changed = false;
+      state.recentTracks.forEach(t => {
+        if (!t.artistId && nameToId[t.artist]) { t.artistId = nameToId[t.artist]; changed = true; }
+      });
+      if (changed) saveState();
+    }
     renderRecentTracks();
     renderQuickPicks();
     renderNewReleases();
