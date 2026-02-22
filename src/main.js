@@ -568,6 +568,7 @@ ipcMain.handle('yt:artistInfo', async (_event, artistId) => {
     let fansAlsoLike = [];
     let livePerformances = [];
     let rawTopSongsArtists = {};
+    let rawTopSongsPlays = {};
     try {
       const rawData = await ytmusic.constructRequest('browse', { browseId: artistId });
       const header = rawData?.header?.musicImmersiveHeaderRenderer || rawData?.header?.musicVisualHeaderRenderer;
@@ -619,13 +620,10 @@ ipcMain.handle('yt:artistInfo', async (_event, artistId) => {
           }).filter(Boolean);
         }
       }
-      // Parse multi-artist data from Songs shelf
+      // Parse multi-artist data + plays from Songs shelf (first musicShelfRenderer, may have no title)
       for (const section of sections) {
         const shelf = section?.musicShelfRenderer;
         if (!shelf) continue;
-        const shelfTitle = shelf?.header?.musicShelfBasicHeaderRenderer
-          ?.title?.runs?.[0]?.text?.toLowerCase() || '';
-        if (!shelfTitle.includes('song')) continue;
         for (const item of (shelf.contents || [])) {
           const r = item?.musicResponsiveListItemRenderer;
           if (!r) continue;
@@ -636,6 +634,8 @@ ipcMain.handle('yt:artistInfo', async (_event, artistId) => {
           const artistRuns = cols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
           const artists = parseArtistsFromRuns(artistRuns);
           if (artists.length) rawTopSongsArtists[videoId] = artists;
+          const playsText = cols[2]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text || '';
+          if (playsText) rawTopSongsPlays[videoId] = playsText;
         }
         break;
       }
@@ -652,7 +652,9 @@ ipcMain.handle('yt:artistInfo', async (_event, artistId) => {
       avatar: getSquareThumbnail(artist.thumbnails, 512),
       topSongs: (artist.topSongs || []).filter(s => s.videoId).map(song => {
         const artists = rawTopSongsArtists[song.videoId] || null;
-        return mapSongToTrack(song, artists);
+        const track = mapSongToTrack(song, artists);
+        if (rawTopSongsPlays[song.videoId]) track.plays = rawTopSongsPlays[song.videoId];
+        return track;
       }),
       topAlbums: (artist.topAlbums || []).map(a => ({
         albumId: a.albumId,
