@@ -259,13 +259,16 @@
   }
 
   function renderTrackList(container, tracks, context) {
-    const showDuration = tracks.some(t => t.duration);
+    const showPlays = tracks.some(t => t.plays);
+    const modifier = showPlays ? ' has-plays' : '';
+
     let html = `
-      <div class="track-list-header${showDuration ? '' : ' no-duration'}">
+      <div class="track-list-header${modifier}">
         <span>#</span>
         <span>Title</span>
         <span>Artist</span>
-        ${showDuration ? '<span style="text-align:right">Duration</span>' : ''}
+        <span></span>
+        ${showPlays ? '<span style="text-align:right">Plays</span>' : ''}
       </div>`;
 
     tracks.forEach((track, i) => {
@@ -273,7 +276,7 @@
       const isLiked = state.likedSongs.some(t => t.id === track.id);
 
       html += `
-        <div class="track-row ${isPlaying ? 'playing' : ''}${showDuration ? '' : ' no-duration'}"
+        <div class="track-row ${isPlaying ? 'playing' : ''}${modifier}"
              data-track-id="${track.id}" data-context="${context}" data-index="${i}" draggable="true">
           <div class="track-num">
             <span class="track-num-text">${isPlaying ? '♫' : i + 1}</span>
@@ -288,28 +291,39 @@
             </div>
           </div>
           <div class="track-artist-col">${renderArtistLinks(track)}</div>
-          ${showDuration ? `<div class="track-duration">${track.duration}</div>` : ''}
+          <div class="track-like-col">
+            <button class="track-like-btn${isLiked ? ' liked' : ''}" title="Like">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            </button>
+          </div>
+          ${showPlays ? `<div class="track-plays">${escapeHtml(track.plays || '')}</div>` : ''}
         </div>`;
     });
 
     container.innerHTML = html;
 
-    // Click + drag handlers
+    // Click + drag + like handlers
     container.querySelectorAll('.track-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const idx = parseInt(row.dataset.index);
-        playFromList(tracks, idx);
-      });
+      const idx = parseInt(row.dataset.index);
+      const track = tracks[idx];
+      row.addEventListener('click', () => playFromList(tracks, idx));
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        const idx = parseInt(row.dataset.index);
         showContextMenu(e, tracks[idx]);
       });
       row.addEventListener('dragstart', (e) => {
-        const idx = parseInt(row.dataset.index);
-        const track = tracks[idx];
         if (track) startTrackDrag(e, track);
       });
+      const likeBtn = row.querySelector('.track-like-btn');
+      if (likeBtn && track) {
+        likeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleLike(track);
+          likeBtn.classList.toggle('liked', state.likedSongs.some(t => t.id === track.id));
+        });
+      }
     });
 
     bindArtistLinks(container);
