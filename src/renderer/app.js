@@ -1044,6 +1044,7 @@
     if (!state.queue.length) return;
     if (audio.currentTime > 3) {
       audio.currentTime = 0;
+      renderQueue();
       return;
     }
     let prevIdx = state.queueIndex - 1;
@@ -1078,7 +1079,13 @@
 
   function togglePlay() {
     if (state.isLoading) return;
-    if (!audio.src) return;
+    // Restored queue but audio not loaded yet — load and play from start
+    if (!audio.src) {
+      const track = state.queue[state.queueIndex];
+      if (!track) return;
+      playTrack(track);
+      return;
+    }
     if (audio.paused) {
       audio.play();
       state.isPlaying = true;
@@ -2125,10 +2132,19 @@
   // ─── Queue drag-to-reorder ───
 
   let _dragScrollRAF = null;
+  let _dragScrollSpeed = 0;
+  let _queueDragAbort = null;
+
+  // Safety net: if dragend doesn't fire (e.g. ESC), clean up on any global dragend
+  document.addEventListener('dragend', () => stopDragScroll());
 
   function bindQueueDragReorder() {
+    // Abort previous listeners to prevent accumulation
+    if (_queueDragAbort) _queueDragAbort.abort();
+    _queueDragAbort = new AbortController();
+    const signal = _queueDragAbort.signal;
+
     const container = $('#queue-up-next');
-    const scrollable = queuePanel; // the panel itself is overflow-y: auto
     const EDGE_ZONE = 40;
     const MAX_SPEED = 12;
     const items = container.querySelectorAll('.queue-item[draggable="true"]');
@@ -2139,25 +2155,24 @@
         container.classList.add('is-dragging');
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', '');
-      });
+      }, { signal });
 
       item.addEventListener('dragend', () => {
         item.classList.remove('dragging');
         container.classList.remove('is-dragging');
         stopDragScroll();
-        // Read new order from DOM
+        // Read new order from DOM using queue indices (handles duplicate track IDs)
         const reordered = [];
         container.querySelectorAll('.queue-item').forEach(el => {
-          const tid = el.dataset.trackId;
-          const track = state.queue.find(t => t.id === tid);
-          if (track) reordered.push(track);
+          const qIdx = parseInt(el.dataset.queueIndex, 10);
+          if (state.queue[qIdx]) reordered.push(state.queue[qIdx]);
         });
         // Rebuild queue: [tracks before and including current] + [reordered upcoming]
         const before = state.queue.slice(0, state.queueIndex + 1);
         state.queue = [...before, ...reordered];
         renderQueue();
         saveState();
-      });
+      }, { signal });
     });
 
     container.addEventListener('dragover', (e) => {
@@ -2173,7 +2188,7 @@
       }
 
       // Auto-scroll when dragging near edges
-      const rect = scrollable.getBoundingClientRect();
+      const rect = queuePanel.getBoundingClientRect();
       const distTop = e.clientY - rect.top;
       const distBottom = rect.bottom - e.clientY;
 
@@ -2186,10 +2201,8 @@
       } else {
         stopDragScroll();
       }
-    });
+    }, { signal });
   }
-
-  let _dragScrollSpeed = 0;
 
   function startDragScroll() {
     if (_dragScrollRAF) return;
