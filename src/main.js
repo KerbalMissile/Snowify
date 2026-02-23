@@ -210,33 +210,34 @@ async function checkMacYtDlp() {
         show: true,
         frame: false,
         transparent: false,
-        backgroundColor: '#1a1a2e',
+        backgroundColor: '#0a0a0a',
         webPreferences: { nodeIntegration: false, contextIsolation: true }
       });
 
       progressWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!DOCTYPE html>
 <html><head><style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-    background: #1a1a2e; color: #e0e0e0; padding: 24px; display: flex;
-    flex-direction: column; height: 100vh; -webkit-app-region: drag; user-select: none; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #121212; color: #b3b3b3; padding: 24px; display: flex;
+    flex-direction: column; height: 100vh; -webkit-app-region: drag; user-select: none;
+    border-radius: 16px; overflow: hidden; }
   h2 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #fff; }
-  .status { font-size: 13px; color: #aaa; margin-bottom: 16px; }
+  .status { font-size: 13px; color: #b3b3b3; margin-bottom: 16px; }
   .spinner { display: inline-block; width: 14px; height: 14px;
-    border: 2px solid rgba(255,255,255,0.15); border-top-color: #1db954;
+    border: 2px solid rgba(255,255,255,0.1); border-top-color: #aa55e6;
     border-radius: 50%; animation: spin 0.8s linear infinite;
     vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .log-toggle { -webkit-app-region: no-drag; background: transparent; border: 1px solid rgba(255,255,255,0.15);
-    color: #aaa; font-size: 12px; padding: 4px 12px; border-radius: 6px;
+  .log-toggle { -webkit-app-region: no-drag; background: transparent; border: 1px solid rgba(255,255,255,0.1);
+    color: #b3b3b3; font-size: 12px; padding: 4px 12px; border-radius: 10px;
     cursor: pointer; margin-bottom: 10px; align-self: flex-start; transition: all 0.15s; }
-  .log-toggle:hover { border-color: #1db954; color: #fff; }
-  .log-area { flex: 1; background: #111; border-radius: 8px; padding: 10px;
-    font-family: "SF Mono", Menlo, monospace; font-size: 11px; color: #888;
+  .log-toggle:hover { border-color: #aa55e6; color: #fff; }
+  .log-area { flex: 1; background: #0a0a0a; border-radius: 10px; padding: 10px;
+    font-family: "SF Mono", Menlo, monospace; font-size: 11px; color: #666;
     overflow-y: auto; white-space: pre-wrap; word-break: break-all;
-    display: none; min-height: 0; }
+    display: none; min-height: 0; border: 1px solid rgba(255,255,255,0.06); }
   .log-area.visible { display: block; }
-  .done { color: #1db954; }
+  .done { color: #aa55e6; }
   .fail { color: #e74c3c; }
 </style></head><body>
   <h2><span class="spinner" id="spinner"></span>Installing yt-dlp...</h2>
