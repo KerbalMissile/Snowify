@@ -2663,6 +2663,8 @@
       const existing = state.playlists.find(p => p.externalId === playlistId);
       if (existing) {
         state.playlists = state.playlists.filter(p => p.externalId !== playlistId);
+        saveBtn.classList.add('unsaving');
+        saveBtn.addEventListener('animationend', () => saveBtn.classList.remove('unsaving'), { once: true });
         showToast(`Removed "${meta?.name || 'Playlist'}" from library`);
       } else {
         const name = meta?.name || 'Imported Playlist';

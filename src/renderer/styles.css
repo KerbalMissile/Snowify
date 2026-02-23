@@ -2096,8 +2096,25 @@ html, body {
 }
 .playlist-action-btn:hover { color: var(--text-primary); transform: scale(1.15); }
 .playlist-action-btn.btn-delete:hover { color: var(--red); }
-.playlist-action-btn.saved { color: var(--accent); }
-.playlist-action-btn.saved:hover { color: var(--text-primary); }
+.playlist-action-btn.saved {
+  background: var(--accent);
+  color: #000;
+  border-radius: 50%;
+  animation: save-pop .3s cubic-bezier(.175,.885,.32,1.275);
+}
+.playlist-action-btn.saved:hover { background: var(--accent-hover, var(--accent)); color: #000; }
+@keyframes save-pop {
+  0% { transform: scale(0.6); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.playlist-action-btn.unsaving {
+  animation: save-unpop .25s ease-out;
+}
+@keyframes save-unpop {
+  0% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
 
 /* ═══════ Settings Page ═══════ */
 .settings-content {
