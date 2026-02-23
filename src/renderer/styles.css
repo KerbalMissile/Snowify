@@ -826,16 +826,29 @@ html, body {
 
 
 /* ═══════ Search Suggestions ═══════ */
+/* Flatten search input bottom corners when dropdown is visible */
+.search-input-wrap:has(.search-suggestions:not(.hidden)) #search-input {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-bottom-color: transparent;
+}
 .search-suggestions {
   position: absolute;
   top: 100%;
   left: 0; right: 0;
   background: var(--bg-elevated);
-  border-radius: 0 0 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   z-index: 1001;
   padding: 6px 0;
   animation: menuEnter 0.15s ease;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+/* Mirror the search input's focus glow on the dropdown */
+.search-input-wrap:has(#search-input:focus) .search-suggestions:not(.hidden) {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 8px 24px rgba(0,0,0,0.4);
 }
 .search-suggestions.hidden { display: none; }
 
