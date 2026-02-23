@@ -45,12 +45,20 @@ function getYtDlpPath() {
     const macPaths = [
       '/opt/homebrew/bin/yt-dlp',           // brew (Apple Silicon)
       '/usr/local/bin/yt-dlp',              // brew (Intel) or pip3 system
-      path.join(os.homedir(), '.local/bin/yt-dlp'), // pip3 --user
-      path.join(os.homedir(), 'Library/Python/3.14/bin/yt-dlp'), // pip3 user (versioned)
-      path.join(os.homedir(), 'Library/Python/3.13/bin/yt-dlp'),
-      path.join(os.homedir(), 'Library/Python/3.12/bin/yt-dlp'),
-      path.join(os.homedir(), 'Library/Python/3.11/bin/yt-dlp'),
+      path.join(os.homedir(), '.local/bin/yt-dlp'), // pip3 --user (Linux-style)
     ];
+    // Dynamically discover pip3 --user versioned paths: ~/Library/Python/X.Y/bin/yt-dlp
+    try {
+      const pyLibDir = path.join(os.homedir(), 'Library', 'Python');
+      if (fs.existsSync(pyLibDir)) {
+        const versions = fs.readdirSync(pyLibDir)
+          .filter(d => /^\d+\.\d+$/.test(d))
+          .sort((a, b) => parseFloat(b) - parseFloat(a)); // newest first
+        for (const v of versions) {
+          macPaths.push(path.join(pyLibDir, v, 'bin', 'yt-dlp'));
+        }
+      }
+    } catch (_) {}
     for (const p of macPaths) {
       if (fs.existsSync(p)) return p;
     }
@@ -178,9 +186,20 @@ function checkMacYtDlp() {
     // not found or broken — try auto-install
   }
 
+  // Helper: verify yt-dlp actually works after install
+  function verifyYtDlp() {
+    const p = getYtDlpPath();
+    try {
+      execFileSync(p, ['--version'], { stdio: 'ignore', timeout: 5000 });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Try auto-install with brew
-  try {
-    execFileSync('which', ['brew'], { stdio: 'ignore' });
+  const hasBrew = (() => { try { execFileSync('which', ['brew'], { stdio: 'ignore' }); return true; } catch (_) { return false; } })();
+  if (hasBrew) {
     const response = dialog.showMessageBoxSync(mainWindow, {
       type: 'info',
       title: 'First Time Setup',
@@ -192,7 +211,9 @@ function checkMacYtDlp() {
     });
     if (response === 0) {
       try {
-        execSync('brew install yt-dlp', { stdio: 'ignore', timeout: 120000 });
+        execSync('brew install yt-dlp', { timeout: 120000, stdio: 'pipe' });
+      } catch (_) {}
+      if (verifyYtDlp()) {
         dialog.showMessageBoxSync(mainWindow, {
           type: 'info',
           title: 'Setup Complete',
@@ -201,24 +222,21 @@ function checkMacYtDlp() {
           buttons: ['OK']
         });
         return;
-      } catch (_) {
-        dialog.showMessageBoxSync(mainWindow, {
-          type: 'error',
-          title: 'Installation Failed',
-          message: 'Could not install yt-dlp via Homebrew.',
-          detail: 'Please try manually in Terminal:\n\nbrew install yt-dlp',
-          buttons: ['OK']
-        });
       }
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'error',
+        title: 'Installation Failed',
+        message: 'Could not install yt-dlp via Homebrew.',
+        detail: 'Please try manually in Terminal:\n\nbrew install yt-dlp',
+        buttons: ['OK']
+      });
     }
-    return;
-  } catch (_) {
-    // no brew
+    return; // brew exists — don't fall through to pip (user can retry)
   }
 
-  // Try auto-install with pip3
-  try {
-    execFileSync('which', ['pip3'], { stdio: 'ignore' });
+  // Try auto-install with pip3 (use --user so it goes to ~/Library/Python/X.Y/bin/)
+  const hasPip = (() => { try { execSync('pip3 --version', { stdio: 'ignore', timeout: 5000 }); return true; } catch (_) { return false; } })();
+  if (hasPip) {
     const response = dialog.showMessageBoxSync(mainWindow, {
       type: 'info',
       title: 'First Time Setup',
@@ -230,7 +248,9 @@ function checkMacYtDlp() {
     });
     if (response === 0) {
       try {
-        execSync('pip3 install yt-dlp', { stdio: 'ignore', timeout: 120000 });
+        execSync('pip3 install --user yt-dlp', { timeout: 120000, stdio: 'pipe' });
+      } catch (_) {}
+      if (verifyYtDlp()) {
         dialog.showMessageBoxSync(mainWindow, {
           type: 'info',
           title: 'Setup Complete',
@@ -239,27 +259,24 @@ function checkMacYtDlp() {
           buttons: ['OK']
         });
         return;
-      } catch (_) {
-        dialog.showMessageBoxSync(mainWindow, {
-          type: 'error',
-          title: 'Installation Failed',
-          message: 'Could not install yt-dlp via pip.',
-          detail: 'Please try manually in Terminal:\n\npip3 install yt-dlp',
-          buttons: ['OK']
-        });
       }
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'error',
+        title: 'Installation Failed',
+        message: 'Could not install yt-dlp via pip.',
+        detail: 'Please try manually in Terminal:\n\npip3 install --user yt-dlp',
+        buttons: ['OK']
+      });
     }
-    return;
-  } catch (_) {
-    // no pip3
+    // Fall through to manual instructions
   }
 
-  // No package manager found — show manual instructions
+  // No package manager found or install failed — show manual instructions
   const response = dialog.showMessageBoxSync(mainWindow, {
     type: 'warning',
     title: 'yt-dlp Not Found',
     message: 'Setup Required',
-    detail: 'yt-dlp is required for audio streaming but could not be installed automatically.\n\nYou need Homebrew first. Install it from https://brew.sh, then run:\n\nbrew install yt-dlp',
+    detail: 'yt-dlp is required for audio streaming but could not be installed automatically.\n\nInstall Homebrew from https://brew.sh, then run:\n\nbrew install yt-dlp',
     buttons: ['Open brew.sh', 'OK'],
     defaultId: 1,
     noLink: true
