@@ -1981,6 +1981,16 @@
     showToast('Queue cleared');
   });
 
+  // Clear history
+  $('#btn-clear-history').addEventListener('click', () => {
+    state.recentTracks = [];
+    saveState();
+    renderHistory();
+    renderRecentTracks();
+    renderQuickPicks();
+    showToast('History cleared');
+  });
+
   function renderQueue() {
     const nowPlaying = $('#queue-now-playing');
     const upNext = $('#queue-up-next');
@@ -2072,7 +2082,26 @@
   }
 
   function renderHistory() {
+    // Now Playing section
+    const nowPlaying = $('#history-now-playing');
+    const current = state.queue[state.queueIndex];
+    if (current) {
+      nowPlaying.innerHTML = renderQueueItem(current, true, false);
+      const nowItem = nowPlaying.querySelector('.queue-item');
+      if (nowItem) {
+        bindArtistLinks(nowItem);
+        nowItem.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showContextMenu(e, current, { hideAddQueue: true, hidePlayNext: true });
+        });
+      }
+    } else {
+      nowPlaying.innerHTML = `<p style="color:var(--text-subdued);font-size:13px;">Nothing playing</p>`;
+    }
+
+    // Recently Played list
     const container = $('#history-list');
+    $('#btn-clear-history').style.display = state.recentTracks.length ? '' : 'none';
     if (!state.recentTracks.length) {
       container.innerHTML = `<p style="color:var(--text-subdued);font-size:13px;">No recently played tracks</p>`;
       return;

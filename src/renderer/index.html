@@ -630,7 +630,17 @@
     </div>
     <!-- History View -->
     <div id="history-view" class="queue-view" style="display:none;">
-      <div id="history-list"></div>
+      <div class="queue-section">
+        <h4>Now Playing</h4>
+        <div id="history-now-playing"></div>
+      </div>
+      <div class="queue-section">
+        <div class="queue-section-header">
+          <h4>Recently Played</h4>
+          <button class="queue-clear-btn" id="btn-clear-history">Clear</button>
+        </div>
+        <div id="history-list"></div>
+      </div>
     </div>
   </div>
 
