@@ -751,6 +751,56 @@
     }, 10);
   }
 
+  function showPlaylistContextMenu(e, playlistId, meta) {
+    removeContextMenu();
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+
+    menu.innerHTML = `
+      <div class="context-menu-item" data-action="play">Play</div>
+      <div class="context-menu-item" data-action="shuffle">Shuffle Play</div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" data-action="save">Save as Playlist</div>
+    `;
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
+    if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
+
+    menu.addEventListener('click', async (ev) => {
+      const item = ev.target.closest('.context-menu-item');
+      if (!item) return;
+      const action = item.dataset.action;
+
+      if (action === 'play' || action === 'shuffle' || action === 'save') {
+        const tracks = await window.snowify.getPlaylistVideos(playlistId);
+        if (!tracks?.length) { showToast('Could not load playlist'); removeContextMenu(); return; }
+
+        if (action === 'play') {
+          playFromList(tracks, 0);
+        } else if (action === 'shuffle') {
+          const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+          playFromList(shuffled, 0);
+        } else if (action === 'save') {
+          const name = meta?.name || 'Imported Playlist';
+          const pl = createPlaylist(name);
+          pl.tracks = tracks;
+          saveState();
+          renderPlaylists();
+          showToast(`Saved "${name}" with ${tracks.length} songs`);
+        }
+      }
+      removeContextMenu();
+    });
+
+    setTimeout(() => {
+      document.addEventListener('click', removeContextMenu, { once: true });
+    }, 10);
+  }
+
   async function playTrack(track) {
     state.isLoading = true;
     updatePlayButton();
@@ -2866,6 +2916,10 @@
           } catch { showToast('Could not load playlist'); }
         });
         card.addEventListener('click', () => showExternalPlaylistDetail(pid, meta));
+        card.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showPlaylistContextMenu(e, pid, meta);
+        });
       });
     }
 
