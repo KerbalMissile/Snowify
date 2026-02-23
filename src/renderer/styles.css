@@ -3496,7 +3496,7 @@ html, body {
 @keyframes eqBar2 { 0%,100% { height: 100%; } 50% { height: 3px; } }
 @keyframes eqBar3 { 0%,100% { height: 5px; } 30% { height: 80%; } 70% { height: 40%; } }
 
-.now-playing-eq {
+.track-eq {
   display: none;
   align-items: flex-end;
   gap: 2px;
@@ -3531,5 +3531,6 @@ body.audio-playing .eq-bar { animation-play-state: running; }
 
 /* Accessibility */
 @media (prefers-reduced-motion: reduce) {
-  .eq-bar, .sound-wave { animation: none !important; opacity: 1 !important; }
+  .eq-bar { animation: none !important; }
+  .playlist-item.playing .sound-wave { animation: none !important; opacity: 1 !important; }
 }
