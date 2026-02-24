@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld('snowify', {
   getLyrics: (trackName, artistName, albumName, duration) => ipcRenderer.invoke('lyrics:get', trackName, artistName, albumName, duration),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
+  // Custom themes
+  scanThemes: () => ipcRenderer.invoke('theme:scan'),
+  loadTheme: (id) => ipcRenderer.invoke('theme:load', id),
+  addTheme: () => ipcRenderer.invoke('theme:add'),
+  removeTheme: (id) => ipcRenderer.invoke('theme:remove', id),
+  openThemesFolder: () => ipcRenderer.invoke('theme:openFolder'),
+
   // Playlist covers
   pickImage: () => ipcRenderer.invoke('playlist:pickImage'),
   saveImage: (playlistId, sourcePath) => ipcRenderer.invoke('playlist:saveImage', playlistId, sourcePath),

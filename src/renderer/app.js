@@ -61,6 +61,65 @@
   const SAVE_SVG_CHECK = '<span class="save-burst"></span><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
   const SAVE_SVG_PLUS = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
+  // ─── Custom Theme Helpers ───
+  const BUILTIN_THEMES = ['dark', 'light', 'ocean', 'forest', 'sunset', 'rose', 'midnight'];
+
+  function isCustomTheme(theme) {
+    return theme && theme.startsWith('custom:');
+  }
+
+  function customThemeId(theme) {
+    return theme.slice('custom:'.length);
+  }
+
+  function applyCustomThemeCss(css) {
+    let el = document.getElementById('custom-theme-style');
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'custom-theme-style';
+      document.head.appendChild(el);
+    }
+    el.textContent = css;
+  }
+
+  function removeCustomThemeCss() {
+    const el = document.getElementById('custom-theme-style');
+    if (el) el.remove();
+  }
+
+  async function loadAndApplyThemeFile(themeValue) {
+    if (!isCustomTheme(themeValue)) { removeCustomThemeCss(); return false; }
+    const css = await window.snowify.loadTheme(customThemeId(themeValue));
+    if (css) { applyCustomThemeCss(css); return true; }
+    removeCustomThemeCss();
+    return false;
+  }
+
+  async function populateCustomThemes(selectEl, currentValue) {
+    // Remove old custom options
+    selectEl.querySelectorAll('option[data-custom]').forEach(o => o.remove());
+    const themes = await window.snowify.scanThemes();
+    if (themes.length) {
+      const sep = document.createElement('option');
+      sep.disabled = true;
+      sep.textContent = '── Custom ──';
+      sep.dataset.custom = '1';
+      selectEl.appendChild(sep);
+      for (const t of themes) {
+        const opt = document.createElement('option');
+        opt.value = 'custom:' + t.id;
+        opt.textContent = t.name;
+        opt.dataset.custom = '1';
+        selectEl.appendChild(opt);
+      }
+    }
+    selectEl.value = currentValue;
+    // If the value didn't match (theme was removed), fall back to dark
+    if (selectEl.value !== currentValue && isCustomTheme(currentValue)) {
+      selectEl.value = 'dark';
+    }
+  }
+
   function saveState() {
     localStorage.setItem('snowify_state', JSON.stringify({
       playlists: state.playlists,
@@ -3658,7 +3717,7 @@
         videoPremuxed: state.videoPremuxed,
         animations: state.animations,
         effects: state.effects,
-        theme: state.theme,
+        theme: isCustomTheme(state.theme) ? 'dark' : state.theme,
         discordRpc: state.discordRpc,
         country: state.country
       };
@@ -3690,7 +3749,9 @@
       state.videoPremuxed = cloud.videoPremuxed ?? state.videoPremuxed;
       state.animations = cloud.animations ?? state.animations;
       state.effects = cloud.effects ?? state.effects;
-      state.theme = cloud.theme || state.theme;
+      if (cloud.theme && !isCustomTheme(cloud.theme) && !isCustomTheme(state.theme)) {
+        state.theme = cloud.theme;
+      }
       state.discordRpc = cloud.discordRpc ?? state.discordRpc;
       state.country = cloud.country || state.country;
       // Pause cloud save so saveState() doesn't push old data back up
@@ -3700,11 +3761,12 @@
       renderPlaylists();
       renderHome();
       // Apply synced theme
-      if (state.theme === 'dark') {
+      if (state.theme === 'dark' || isCustomTheme(state.theme)) {
         document.documentElement.removeAttribute('data-theme');
       } else {
         document.documentElement.setAttribute('data-theme', state.theme);
       }
+      loadAndApplyThemeFile(state.theme);
       // Re-apply synced settings to UI controls
       const aq = $('#setting-quality'); if (aq) aq.value = state.audioQuality;
       const vq = $('#setting-video-quality'); if (vq) vq.value = state.videoQuality;
@@ -3714,6 +3776,7 @@
       const ef = $('#setting-effects'); if (ef) ef.checked = state.effects;
       const dr = $('#setting-discord-rpc'); if (dr) dr.checked = state.discordRpc;
       const co = $('#setting-country'); if (co) co.value = state.country || '';
+      const ts = $('#theme-select'); if (ts) { await populateCustomThemes(ts, state.theme); }
       if (state.country) window.snowify.setCountry(state.country);
       document.documentElement.classList.toggle('no-animations', !state.animations);
       document.documentElement.classList.toggle('no-effects', !state.effects);
@@ -3807,9 +3870,7 @@
       videoPremuxed: state.videoPremuxed,
       animations: state.animations,
       effects: state.effects,
-      theme: state.theme,
-      discordRpc: state.discordRpc,
-      country: state.country
+        theme: isCustomTheme(state.theme) ? 'dark' : state.theme,
     };
     const result = await window.snowify.cloudSave(data);
     if (result?.error) console.error('Cloud save failed:', result.error);
@@ -4075,23 +4136,80 @@
 
     // Apply theme
     function applyTheme(theme) {
-      if (theme === 'dark') {
+      if (theme === 'dark' || isCustomTheme(theme)) {
         document.documentElement.removeAttribute('data-theme');
       } else {
         document.documentElement.setAttribute('data-theme', theme);
       }
+      loadAndApplyThemeFile(theme);
     }
     applyTheme(state.theme);
 
     // Theme dropdown
     const themeSelect = $('#theme-select');
-    if (themeSelect) {
-      themeSelect.value = state.theme;
-      themeSelect.addEventListener('change', () => {
-        state.theme = themeSelect.value;
+    await populateCustomThemes(themeSelect, state.theme);
+
+    themeSelect.addEventListener('change', () => {
+      state.theme = themeSelect.value;
+      applyTheme(state.theme);
+      saveState();
+    });
+
+    // Custom theme buttons
+    const btnAddTheme = $('#btn-add-theme');
+    const btnReloadTheme = $('#btn-reload-theme');
+    const btnOpenThemes = $('#btn-open-themes');
+    const btnRemoveTheme = $('#btn-remove-theme');
+
+    if (btnAddTheme) {
+      btnAddTheme.onclick = async () => {
+        const added = await window.snowify.addTheme();
+        if (added && added.length) {
+          await populateCustomThemes(themeSelect, state.theme);
+          // Auto-select the first added theme
+          const newVal = 'custom:' + added[0].id;
+          themeSelect.value = newVal;
+          state.theme = newVal;
+          applyTheme(state.theme);
+          saveState();
+          showToast(`Added ${added.length} theme${added.length > 1 ? 's' : ''}`);
+        }
+      };
+    }
+    if (btnReloadTheme) {
+      btnReloadTheme.onclick = async () => {
+        if (isCustomTheme(state.theme)) {
+          const ok = await loadAndApplyThemeFile(state.theme);
+          showToast(ok ? 'Theme reloaded' : 'Theme file not found');
+        } else {
+          // Rescan folder in case files were added externally
+          await populateCustomThemes(themeSelect, state.theme);
+          showToast('Theme list refreshed');
+        }
+      };
+    }
+    if (btnOpenThemes) {
+      btnOpenThemes.onclick = async () => {
+        await window.snowify.openThemesFolder();
+      };
+    }
+    if (btnRemoveTheme) {
+      btnRemoveTheme.onclick = async () => {
+        if (!isCustomTheme(state.theme)) {
+          showToast('Select a custom theme first');
+          return;
+        }
+        const id = customThemeId(state.theme);
+        if (!confirm(`Remove theme "${id}"?`)) return;
+        await window.snowify.removeTheme(id);
+        removeCustomThemeCss();
+        state.theme = 'dark';
+        themeSelect.value = 'dark';
         applyTheme(state.theme);
         saveState();
-      });
+        await populateCustomThemes(themeSelect, state.theme);
+        showToast('Theme removed');
+      };
     }
 
     autoplayToggle.addEventListener('change', () => {

@@ -2417,6 +2417,16 @@ html, body {
   box-shadow: 0 4px 16px rgba(240, 96, 112, 0.25);
 }
 
+/* Custom theme row */
+.custom-theme-row {
+  flex-wrap: wrap;
+}
+.custom-theme-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* Account / Auth */
 .auth-form {
   display: flex;

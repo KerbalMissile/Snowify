@@ -1667,6 +1667,89 @@ ipcMain.handle('spotify:matchTrack', async (_event, title, artist) => {
   }
 });
 
+// ─── Custom Themes ───
+
+function getThemesDir() {
+  const dir = path.join(app.getPath('userData'), 'themes');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function parseThemeName(css, filename) {
+  const match = css.match(/\/\*\s*@name\s+(.+?)\s*\*\//i);
+  if (match) return match[1].trim();
+  return filename.replace(/\.css$/i, '').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+ipcMain.handle('theme:scan', async () => {
+  try {
+    const dir = getThemesDir();
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.css')).sort();
+    return files.map(f => {
+      try {
+        const css = fs.readFileSync(path.join(dir, f), 'utf-8');
+        return { id: f, name: parseThemeName(css, f) };
+      } catch {
+        return { id: f, name: f.replace(/\.css$/i, '') };
+      }
+    });
+  } catch (err) {
+    console.error('Theme scan error:', err);
+    return [];
+  }
+});
+
+ipcMain.handle('theme:load', async (_event, id) => {
+  try {
+    const p = path.join(getThemesDir(), path.basename(id));
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8');
+    return null;
+  } catch (err) {
+    console.error('Theme load error:', err);
+    return null;
+  }
+});
+
+ipcMain.handle('theme:add', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Add custom theme (.css)',
+    filters: [{ name: 'CSS Files', extensions: ['css'] }],
+    properties: ['openFile', 'multiSelections']
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const added = [];
+  const dir = getThemesDir();
+  for (const src of result.filePaths) {
+    try {
+      const filename = path.basename(src);
+      const dest = path.join(dir, filename);
+      fs.copyFileSync(src, dest);
+      const css = fs.readFileSync(dest, 'utf-8');
+      added.push({ id: filename, name: parseThemeName(css, filename) });
+    } catch (err) {
+      console.error('Theme add error:', err);
+    }
+  }
+  return added.length ? added : null;
+});
+
+ipcMain.handle('theme:remove', async (_event, id) => {
+  try {
+    const p = path.join(getThemesDir(), path.basename(id));
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+    return true;
+  } catch (err) {
+    console.error('Theme remove error:', err);
+    return false;
+  }
+});
+
+ipcMain.handle('theme:openFolder', async () => {
+  const { shell } = require('electron');
+  shell.openPath(getThemesDir());
+  return true;
+});
+
 // ─── Playlist Cover Image Management ───
 
 function getCoversDir() {
