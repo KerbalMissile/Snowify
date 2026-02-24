@@ -1590,6 +1590,33 @@ ipcMain.handle('spotify:pickCsv', async () => {
   return playlists.length ? playlists : null;
 });
 
+ipcMain.handle('playlist:exportCsv', async (_event, name, tracks) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export playlist as CSV',
+    defaultPath: name.replace(/[/\\?%*:|"<>]/g, '_') + '.csv',
+    filters: [{ name: 'CSV Files', extensions: ['csv'] }]
+  });
+  if (result.canceled || !result.filePath) return false;
+
+  const escCsv = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+
+  const header = 'Title,Artist,Album,Duration';
+  const rows = tracks.map(t => {
+    const dur = t.durationMs
+      ? `${Math.floor(t.durationMs / 60000)}:${String(Math.floor((t.durationMs % 60000) / 1000)).padStart(2, '0')}`
+      : '';
+    return [escCsv(t.title), escCsv(t.artist), escCsv(t.album), dur].join(',');
+  });
+
+  fs.writeFileSync(result.filePath, [header, ...rows].join('\n'), 'utf-8');
+  return true;
+});
+
 ipcMain.handle('spotify:matchTrack', async (_event, title, artist) => {
   try {
     const query = `${title} ${artist}`;

@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('snowify', {
   saveImage: (playlistId, sourcePath) => ipcRenderer.invoke('playlist:saveImage', playlistId, sourcePath),
   deleteImage: (imagePath) => ipcRenderer.invoke('playlist:deleteImage', imagePath),
 
+  // Playlist export
+  exportPlaylistCsv: (name, tracks) => ipcRenderer.invoke('playlist:exportCsv', name, tracks),
+
   // Account & Cloud Sync
   signInWithEmail: (email, password) => ipcRenderer.invoke('auth:signInWithEmail', email, password),
   signUpWithEmail: (email, password) => ipcRenderer.invoke('auth:signUpWithEmail', email, password),

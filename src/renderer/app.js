@@ -1570,6 +1570,8 @@
     menu.innerHTML = `
       <div class="context-menu-item" data-action="play">Play</div>
       <div class="context-menu-item" data-action="shuffle">Shuffle play</div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" data-action="export-csv">Export as CSV</div>
       ${manageHtml}
     `;
 
@@ -1615,6 +1617,13 @@
         case 'remove-cover': {
           removeContextMenu();
           await removePlaylistCover(playlist);
+          return;
+        }
+        case 'export-csv': {
+          removeContextMenu();
+          if (!playlist.tracks.length) { showToast('Playlist is empty'); return; }
+          const ok = await window.snowify.exportPlaylistCsv(playlist.name, playlist.tracks);
+          if (ok) showToast('Playlist exported successfully');
           return;
         }
         case 'delete':
@@ -1663,6 +1672,7 @@
     const renameBtn = $('#btn-rename-playlist');
     const deleteBtn = $('#btn-delete-playlist');
     const coverBtn = $('#btn-cover-playlist');
+    const exportBtn = $('#btn-export-playlist');
     renameBtn.style.display = isLiked ? 'none' : '';
     deleteBtn.style.display = isLiked ? 'none' : '';
     coverBtn.style.display = isLiked ? 'none' : '';
@@ -1717,6 +1727,12 @@
     coverBtn.onclick = async () => {
       if (isLiked) return;
       await changePlaylistCover(playlist);
+    };
+
+    exportBtn.onclick = async () => {
+      if (!playlist.tracks.length) return showToast('Playlist is empty');
+      const ok = await window.snowify.exportPlaylistCsv(playlist.name, playlist.tracks);
+      if (ok) showToast('Playlist exported successfully');
     };
 
     deleteBtn.onclick = () => {
