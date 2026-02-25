@@ -9,7 +9,11 @@
     "build": "electron-builder --linux",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:all": "electron-builder --linux --win"
+    "build:all": "electron-builder --linux --win",
+    "publish": "electron-builder --linux --publish always",
+    "publish:win": "electron-builder --win --publish always",
+    "publish:mac": "electron-builder --mac --publish always",
+    "publish:all": "electron-builder --linux --win --publish always"
   },
   "keywords": [
     "music",
@@ -68,7 +72,8 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "icon": "assets/logo.png",
       "category": "public.app-category.music"

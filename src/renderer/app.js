@@ -146,7 +146,8 @@
     localStorage.setItem('snowify_queue', JSON.stringify({
       queue: state.queue,
       originalQueue: state.originalQueue,
-      queueIndex: state.queueIndex
+      queueIndex: state.queueIndex,
+      playingPlaylistId: state.playingPlaylistId
     }));
   }
 
@@ -194,6 +195,7 @@
         state.queue = savedQueue.queue || [];
         state.originalQueue = savedQueue.originalQueue || [];
         state.queueIndex = savedQueue.queueIndex ?? -1;
+        state.playingPlaylistId = savedQueue.playingPlaylistId || null;
       }
     } catch (_) {}
   }
@@ -4721,11 +4723,21 @@
           };
           showToast('Update downloaded — restart to apply');
           break;
-        case 'error':
+        case 'error': {
           updateStatusLabel.textContent = 'Update check failed';
-          updateStatusDesc.textContent = data.message || '';
+          // Show a clean, short message
+          let errMsg = data.message || '';
+          if (errMsg.includes('latest.yml') || errMsg.includes('latest-linux.yml')) {
+            errMsg = 'No update metadata found in the latest release. Ensure the release was built with "npm run publish".';
+          } else if (errMsg.includes('net::') || errMsg.includes('ENOTFOUND')) {
+            errMsg = 'Could not reach update server. Check your internet connection.';
+          } else if (errMsg.length > 120) {
+            errMsg = errMsg.slice(0, 120) + '…';
+          }
+          updateStatusDesc.textContent = errMsg;
           btnInstallUpdate.style.display = 'none';
           break;
+        }
       }
     });
 

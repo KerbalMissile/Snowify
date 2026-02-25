@@ -1685,13 +1685,74 @@ ipcMain.handle('playlist:exportCsv', async (_event, name, tracks) => {
   return true;
 });
 
+// ─── Spotify Match Scoring ───
+
+function normalizeStr(s) {
+  return (s || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // strip accents
+    .replace(/[^a-z0-9 ]/g, ' ')                       // keep alphanum + spaces
+    .replace(/\s+/g, ' ').trim();
+}
+
+function tokenize(s) {
+  return normalizeStr(s).split(' ').filter(Boolean);
+}
+
+/** Jaccard-like token overlap: |A∩B| / |A∪B| */
+function tokenSimilarity(a, b) {
+  const tA = new Set(tokenize(a));
+  const tB = new Set(tokenize(b));
+  if (!tA.size && !tB.size) return 1;
+  if (!tA.size || !tB.size) return 0;
+  let inter = 0;
+  for (const t of tA) if (tB.has(t)) inter++;
+  return inter / (tA.size + tB.size - inter);
+}
+
+const UNWANTED_TAGS = ['instrumental', 'karaoke', 'cover', '8d', '8d audio', 'remix', 'slowed', 'sped up', 'reverb', 'nightcore', 'acoustic', 'live'];
+
+function scoreMatch(song, targetTitle, targetArtist) {
+  const sTitle = song.name || '';
+  const sArtist = song.artist?.name || '';
+
+  // Title similarity (0–1) — weighted heaviest
+  const titleScore = tokenSimilarity(targetTitle, sTitle);
+
+  // Artist similarity (0–1)
+  const artistScore = tokenSimilarity(targetArtist, sArtist);
+
+  // Penalize unwanted variants unless the original title also has that tag
+  const normTarget = normalizeStr(targetTitle);
+  const normResult = normalizeStr(sTitle);
+  let penalty = 0;
+  for (const tag of UNWANTED_TAGS) {
+    if (normResult.includes(tag) && !normTarget.includes(tag)) {
+      penalty += 0.3;
+    }
+  }
+
+  // Composite: title matters most, artist second
+  return (titleScore * 0.6) + (artistScore * 0.4) - penalty;
+}
+
 ipcMain.handle('spotify:matchTrack', async (_event, title, artist) => {
   try {
     const query = `${title} ${artist}`;
     const songs = await ytmusic.searchSongs(query);
-    const match = songs.find(s => s.videoId);
-    if (!match) return null;
-    return mapSongToTrack(match);
+    const candidates = songs.filter(s => s.videoId);
+    if (!candidates.length) return null;
+
+    let bestSong = candidates[0];
+    let bestScore = -Infinity;
+    for (const song of candidates) {
+      const score = scoreMatch(song, title, artist);
+      if (score > bestScore) {
+        bestScore = score;
+        bestSong = song;
+      }
+    }
+
+    return mapSongToTrack(bestSong);
   } catch (err) {
     console.error('Spotify match error:', err);
     return null;
