@@ -502,14 +502,14 @@ async function autoSignIn() {
   }
 }
 
-firebase.onAuthStateChanged(firebase.auth, (user) => {
+firebase.onAuthStateChanged(firebase.auth, async (user) => {
   currentUser = user;
-  mainWindow?.webContents?.send('auth:stateChanged', user ? {
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName,
-    photoURL: user.photoURL
-  } : null);
+  if (user) {
+    const info = await getUserInfo(user);
+    mainWindow?.webContents?.send('auth:stateChanged', info);
+  } else {
+    mainWindow?.webContents?.send('auth:stateChanged', null);
+  }
 });
 
 ipcMain.handle('auth:signInWithGoogle', async () => {
@@ -589,35 +589,52 @@ ipcMain.handle('auth:signOut', async () => {
   }
 });
 
-ipcMain.handle('auth:getUser', () => {
-  const user = firebase.auth.currentUser;
-  if (!user) return null;
-  return {
+// Helper: get user info with Firestore profile fallback
+async function getUserInfo(user) {
+  const info = {
     uid: user.uid,
     email: user.email,
     displayName: user.displayName,
-    photoURL: user.photoURL
+    photoURL: user.photoURL || null
   };
+  // Fetch avatar from Firestore (supports large data URIs)
+  try {
+    const docRef = firebase.doc(firebase.db, 'users', user.uid);
+    const snap = await firebase.getDoc(docRef);
+    if (snap.exists()) {
+      const profile = snap.data()?.profile;
+      if (profile?.photoURL) info.photoURL = profile.photoURL;
+      if (profile?.displayName && !info.displayName) info.displayName = profile.displayName;
+    }
+  } catch (_) { /* Firestore fetch failed, use Auth fallback */ }
+  return info;
+}
+
+ipcMain.handle('auth:getUser', async () => {
+  const user = firebase.auth.currentUser;
+  if (!user) return null;
+  return getUserInfo(user);
 });
 
 ipcMain.handle('profile:update', async (_event, { displayName, photoURL }) => {
   const user = firebase.auth.currentUser;
   if (!user) return { error: 'Not signed in' };
   try {
-    const updates = {};
-    if (displayName !== undefined) updates.displayName = displayName;
-    if (photoURL !== undefined) updates.photoURL = photoURL;
-    await firebase.updateProfile(user, updates);
-    // Also save profile info to Firestore for cross-device access
+    // Only store displayName in Firebase Auth (photoURL goes to Firestore only
+    // because Firebase Auth has a URL length limit that rejects data URIs)
+    if (displayName !== undefined) {
+      await firebase.updateProfile(user, { displayName });
+    }
+    // Save full profile (including large photoURL data URIs) to Firestore
+    const profileData = { displayName: user.displayName };
+    if (photoURL !== undefined) profileData.photoURL = photoURL;
     const docRef = firebase.doc(firebase.db, 'users', user.uid);
-    await firebase.setDoc(docRef, {
-      profile: { displayName: user.displayName, photoURL: user.photoURL }
-    }, { merge: true });
+    await firebase.setDoc(docRef, { profile: profileData }, { merge: true });
     return {
       uid: user.uid,
       email: user.email,
       displayName: user.displayName,
-      photoURL: user.photoURL
+      photoURL: photoURL !== undefined ? photoURL : user.photoURL
     };
   } catch (err) {
     return { error: err.message };

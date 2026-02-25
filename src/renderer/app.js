@@ -1646,7 +1646,10 @@
   function getPlaylistCoverHtml(playlist, size = 'normal') {
     const sizeClass = size === 'large' ? ' playlist-cover-lg' : '';
     if (playlist.coverImage) {
-      return `<img src="file://${encodeURI(playlist.coverImage)}" alt="" />`;
+      // Convert native path to proper file:// URL (handles Windows backslashes)
+      const normalized = playlist.coverImage.replace(/\\/g, '/');
+      const fileUrl = normalized.startsWith('/') ? `file://${encodeURI(normalized)}` : `file:///${encodeURI(normalized)}`;
+      return `<img src="${fileUrl}" alt="" />`;
     }
     if (playlist.tracks.length >= 4) {
       const thumbs = playlist.tracks.slice(0, 4).map(t => t.thumbnail);
@@ -4939,22 +4942,28 @@
         if (!dataUrl) { showToast('Failed to load image'); return; }
         // Resize to 128×128 to keep the data URL small for Firebase
         const img = new Image();
+        img.onerror = () => showToast('Failed to load image');
         img.onload = async () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = 128;
-          canvas.height = 128;
-          const ctx = canvas.getContext('2d');
-          const size = Math.min(img.width, img.height);
-          const sx = (img.width - size) / 2;
-          const sy = (img.height - size) / 2;
-          ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
-          const resized = canvas.toDataURL('image/jpeg', 0.8);
-          const updateResult = await window.snowify.updateProfile({ photoURL: resized });
-          if (updateResult?.error) {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const size = Math.min(img.width, img.height);
+            const sx = (img.width - size) / 2;
+            const sy = (img.height - size) / 2;
+            ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
+            // Use lower quality to stay under Firebase photoURL size limit
+            const resized = canvas.toDataURL('image/jpeg', 0.5);
+            const updateResult = await window.snowify.updateProfile({ photoURL: resized });
+            if (updateResult?.error) {
+              showToast('Failed to update avatar: ' + updateResult.error);
+            } else {
+              $('#profile-avatar').src = resized;
+              showToast('Profile picture updated');
+            }
+          } catch (err) {
             showToast('Failed to update avatar');
-          } else {
-            $('#profile-avatar').src = resized;
-            showToast('Profile picture updated');
           }
         };
         img.src = dataUrl;
