@@ -1263,8 +1263,9 @@
 
   function updateDiscordPresence(track) {
     if (!state.discordRpc || !track) return;
-    const startMs = Date.now() - Math.floor((audio.currentTime || 0) * 1000);
-    const durationMs = track.durationMs || (audio.duration ? Math.round(audio.duration * 1000) : 0);
+    const src = engine.getActiveSource();
+    const startMs = Date.now() - Math.floor((src.currentTime || 0) * 1000);
+    const durationMs = track.durationMs || (src.duration ? Math.round(src.duration * 1000) : 0);
     const data = {
       title: track.title,
       artist: track.artist,
