@@ -1031,6 +1031,7 @@
 
   async function playTrack(track) {
     if (engine.isInProgress()) { engine.instantComplete(); audio = engine.getActiveAudio(); }
+    normalizer.finalizeMeasurement(audio, true); // track interrupted = partial
     engine.resetTrigger();
 
     // Check preloaded BEFORE clearing — if it matches, use the standby
@@ -1352,6 +1353,7 @@
         playNext();
         break;
       case 'crossfade-start':
+        normalizer.finalizeMeasurement(audio, false); // old track near-end = full
         showNowPlaying(evt.track);
         addToRecent(evt.track);
         updateDiscordPresence(evt.track);
@@ -1363,11 +1365,19 @@
       case 'preload-ready':
         normalizer.preAnalyze(evt.url, evt.track.id);
         break;
-      case 'crossfade-complete':
+      case 'crossfade-complete': {
         audio = engine.getActiveAudio();
         updatePositionState();
         updatePlayButton();
+        const cfTrack = state.queue[state.queueIndex];
+        if (cfTrack) {
+          const cached = normalizer.getCachedLUFS(cfTrack.id);
+          if (!cached || cached.partial) {
+            normalizer.startMeasurement(audio, cfTrack.id);
+          }
+        }
         break;
+      }
       case 'crossfade-cancel':
         audio = engine.getActiveAudio();
         if (evt.track) {
@@ -1377,6 +1387,7 @@
         }
         break;
       case 'ended-no-preload':
+        normalizer.finalizeMeasurement(audio, false);
         playNext();
         break;
       case 'seeked':
@@ -1425,7 +1436,7 @@
   if (state.normalization) {
     normalizer.setEnabled(true);
     normalizer.setTarget(state.normalizationTarget);
-    normalizer.initAudioContext();
+    normalizer.initAudioContext(); // async — resolves before first playTrack
   }
 
   $('#btn-play-pause').addEventListener('click', togglePlay);
@@ -1552,6 +1563,7 @@
     audio.volume = state.volume * VOLUME_SCALE;
     if (_videoAudio) _videoAudio.volume = state.volume * VOLUME_SCALE;
     if (videoPlayer && !videoPlayer.muted) videoPlayer.volume = state.volume * VOLUME_SCALE;
+    normalizer.updateVolumeCompensation(engine.getActiveAudio());
     volumeFill.style.width = (state.volume * 100) + '%';
     const isMuted = state.volume === 0;
     $('.vol-icon', btnVolume).classList.toggle('hidden', isMuted);
@@ -5572,12 +5584,12 @@
     normTargetRow.classList.toggle('hidden', !state.normalization);
     normTargetSelect.value = String(state.normalizationTarget);
 
-    normToggle.addEventListener('change', () => {
+    normToggle.addEventListener('change', async () => {
       state.normalization = normToggle.checked;
       normalizer.setEnabled(state.normalization);
       normTargetRow.classList.toggle('hidden', !state.normalization);
       if (state.normalization) {
-        normalizer.initAudioContext();
+        await normalizer.initAudioContext();
         normalizer.setTarget(state.normalizationTarget);
         // Analyze current track if playing
         const track = state.queue[state.queueIndex];
