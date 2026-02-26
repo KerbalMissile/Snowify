@@ -1768,7 +1768,7 @@ function scoreMatch(song, targetTitle, targetArtist) {
   let penalty = 0;
   for (const tag of UNWANTED_TAGS) {
     if (normResult.includes(tag) && !normTarget.includes(tag)) {
-      penalty += 0.3;
+      penalty += 0.5;
     }
   }
 
@@ -1778,6 +1778,21 @@ function scoreMatch(song, targetTitle, targetArtist) {
     if (normAlbum.includes(tag) && !normTarget.includes(tag)) {
       penalty += 0.15;
     }
+  }
+
+  // Penalize if the result title has extra parenthetical/bracketed content the query doesn't
+  // e.g. "Someone To You (Pilton Remix)" when searching for "Someone To You"
+  const resultExtra = normResult.replace(normTarget, '').trim();
+  if (resultExtra.length > 0 && normTarget.length > 0) {
+    // The result has tokens not in the target — penalize proportionally
+    const extraTokens = resultExtra.split(' ').filter(Boolean);
+    const targetTokens = normTarget.split(' ').filter(Boolean);
+    penalty += 0.1 * (extraTokens.length / Math.max(targetTokens.length, 1));
+  }
+
+  // Bonus for exact title match (normalized)
+  if (normResult === normTarget) {
+    penalty -= 0.15;
   }
 
   // Strong penalty if artist has zero overlap — likely a cover/wrong version
