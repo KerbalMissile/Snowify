@@ -788,7 +788,13 @@
     container.querySelectorAll('.track-row').forEach(row => {
       const idx = parseInt(row.dataset.index);
       const track = tracks[idx];
-      row.addEventListener('click', () => playFromList(tracks, idx, sourcePlaylistId));
+      row.addEventListener('click', () => {
+        if (context === 'playlist' || context === 'album') {
+          playFromList(tracks, idx, sourcePlaylistId);
+        } else {
+          playFromList([track], 0);
+        }
+      });
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         showContextMenu(e, tracks[idx]);
@@ -3143,7 +3149,7 @@
     content.querySelectorAll('.top-song-item').forEach(item => {
       const track = topSongsList.find(t => t.id === item.dataset.trackId);
       if (!track) return;
-      item.addEventListener('click', () => playFromList(topSongsList, topSongsList.indexOf(track)));
+      item.addEventListener('click', () => playFromList([track], 0));
       bindArtistLinks(item);
       item.addEventListener('contextmenu', (e) => {
         e.preventDefault();
