@@ -3076,8 +3076,8 @@ html, body {
 }
 
 /* ═══════ Changelog Modal ═══════ */
-.changelog-modal-box {
-  max-width: 560px;
+.modal-box.changelog-modal-box {
+  max-width: 640px;
   width: 90vw;
   max-height: 80vh;
   display: flex;

@@ -5959,7 +5959,31 @@
     // ─── Changelog ───
     function renderMarkdown(md) {
       // Simple markdown → HTML for release notes
+
+      // Extract links and inline code BEFORE escaping so URLs stay intact
+      const tokens = [];
+      let tokenIdx = 0;
+      function stash(html) { const key = `\x00T${tokenIdx++}\x00`; tokens.push({ key, html }); return key; }
+
+      // Preserve inline code
+      md = md.replace(/`([^`]+)`/g, (_, code) => stash(`<code>${escapeHtml(code)}</code>`));
+      // Images  ![alt](url)
+      md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => stash(`<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" />`));
+      // Links  [text](url)
+      md = md.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => stash(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`));
+      // Bare URLs (https://...)
+      md = md.replace(/(^|[\s(])((https?:\/\/)[^\s)<]+)/gm, (_, pre, url) => pre + stash(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`));
+      // @mentions → GitHub profile links
+      md = md.replace(/(^|[\s(])@([a-zA-Z0-9_-]+)/gm, (_, pre, user) => pre + stash(`<a href="https://github.com/${escapeHtml(user)}" target="_blank" rel="noopener">@${escapeHtml(user)}</a>`));
+
+      // Now escape remaining HTML entities
       let html = escapeHtml(md);
+
+      // Restore stashed tokens
+      for (const { key, html: val } of tokens) {
+        html = html.split(key).join(val);
+      }
+
       // Headers
       html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
       html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -5967,14 +5991,8 @@
       // Bold / italic
       html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-      // Inline code
-      html = html.replace(/`(.+?)`/g, '<code>$1</code>');
       // Horizontal rules
       html = html.replace(/^---$/gm, '<hr>');
-      // Links  [text](url)
-      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-      // Images  ![alt](url) → just a link (since we escaped the html)
-      html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
       // Unordered lists
       html = html.replace(/^[*\-] (.+)$/gm, '<li>$1</li>');
       html = html.replace(/((?:<li>.+<\/li>\n?)+)/g, '<ul>$1</ul>');
