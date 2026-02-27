@@ -126,7 +126,16 @@
     }
   }
 
+  let _saveStateTimer = null;
   function saveState() {
+    if (_saveStateTimer) return; // already scheduled
+    _saveStateTimer = setTimeout(() => {
+      _saveStateTimer = null;
+      _flushSaveState();
+    }, 300);
+  }
+  function _flushSaveState() {
+    if (_saveStateTimer) { clearTimeout(_saveStateTimer); _saveStateTimer = null; }
     localStorage.setItem('snowify_state', JSON.stringify({
       playlists: state.playlists,
       likedSongs: state.likedSongs,
@@ -575,7 +584,9 @@
       </div>`;
   }
 
+  let _searchGeneration = 0;
   async function performSearch(query) {
+    const gen = ++_searchGeneration;
     searchResults.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
     try {
       const [results, artists, albums, playlists, videos] = await Promise.all([
@@ -585,6 +596,8 @@
         window.snowify.searchPlaylists(query),
         window.snowify.searchVideos(query)
       ]);
+
+      if (gen !== _searchGeneration) return; // stale search — discard
 
       if (!results.length && !artists.length && !albums.length && !playlists.length && !videos.length) {
         searchResults.innerHTML = `
@@ -602,6 +615,7 @@
       if (playlists.length) renderSearchPlaylists(playlists);
       if (videos.length) renderSearchVideos(videos);
     } catch (err) {
+      if (gen !== _searchGeneration) return; // stale — don't show error for superseded search
       searchResults.innerHTML = `<div class="empty-state"><p>Search failed. Please try again.</p></div>`;
     }
   }
@@ -1148,7 +1162,12 @@
     });
   }
 
+  let _playGeneration = 0;
+  let _consecutiveFailures = 0;
+  const MAX_CONSECUTIVE_FAILURES = 5;
+
   async function playTrack(track) {
+    const gen = ++_playGeneration;
     if (engine.isInProgress()) { engine.instantComplete(); audio = engine.getActiveAudio(); }
     normalizer.finalizeMeasurement(audio, true); // track interrupted = partial
     engine.resetTrigger();
@@ -1169,12 +1188,15 @@
       } else {
         showToast(`Loading: ${track.title}`);
         const directUrl = await window.snowify.getStreamUrl(track.url, state.audioQuality);
+        if (gen !== _playGeneration) return; // stale call — newer playTrack superseded us
         engine.setSource(directUrl);
         audio = engine.getActiveAudio();
       }
 
       audio.volume = state.volume * engine.VOLUME_SCALE;
       await audio.play();
+      if (gen !== _playGeneration) return; // stale call
+      _consecutiveFailures = 0; // reset on success
       state.isPlaying = true;
       state.isLoading = false;
       addToRecent(track);
@@ -1187,6 +1209,7 @@
       // Loudness normalization: analyze + apply
       normalizer.analyzeAndApply(audio, audio.src, track.id);
     } catch (err) {
+      if (gen !== _playGeneration) return; // stale call
       // Ignore AbortError — happens when play() is interrupted by a new load (e.g. rapid skip)
       if (err && err.name === 'AbortError') return;
       console.error('Playback error:', err);
@@ -1196,14 +1219,17 @@
       state.isLoading = false;
       updatePlayButton();
       updateTrackHighlight();
-      if (!playTrack._skipAdvance) {
+      _consecutiveFailures++;
+      if (_consecutiveFailures < MAX_CONSECUTIVE_FAILURES) {
         const nextIdx = state.queueIndex + 1;
         if (nextIdx < state.queue.length) {
-          playTrack._skipAdvance = true;
           state.queueIndex = nextIdx;
-          playTrack(state.queue[nextIdx]).finally(() => { playTrack._skipAdvance = false; });
+          playTrack(state.queue[nextIdx]);
           renderQueue();
         }
+      } else {
+        showToast('Multiple tracks failed — stopping playback');
+        _consecutiveFailures = 0;
       }
       return;
     }
@@ -3979,7 +4005,6 @@
   const btnLyrics = $('#btn-lyrics');
   let _lyricsLines = [];
   let _lyricsTrackId = null;
-  let _lyricsSyncInterval = null;
   let _lyricsVisible = false;
 
   btnLyrics.addEventListener('click', () => {
@@ -4127,20 +4152,14 @@
     </div>`;
   }
 
+  let _lyricsSyncActive = false;
   function startLyricsSync() {
-    stopLyricsSync();
-    if (!_lyricsLines.length) return;
-    _lyricsSyncInterval = setInterval(() => {
-      if (audio.paused) return;
-      syncLyrics();
-    }, 100);
+    _lyricsSyncActive = true;
+    _startLyricsSyncLoop();
   }
 
   function stopLyricsSync() {
-    if (_lyricsSyncInterval) {
-      clearInterval(_lyricsSyncInterval);
-      _lyricsSyncInterval = null;
-    }
+    _lyricsSyncActive = false;
   }
 
   let _lastActiveLyricIdx = -1;
@@ -4220,7 +4239,6 @@
   const maxNPTimeTotal = $('#max-np-time-total');
   let _maxNPOpen = false;
   let _maxNPLyricsVisible = false;
-  let _maxLyricsSyncInterval = null;
   let _maxLastActiveLyricIdx = -1;
 
   function openMaxNP() {
@@ -4411,20 +4429,37 @@
     }
   }
 
+  let _maxLyricsSyncActive = false;
   function startMaxLyricsSync() {
-    stopMaxLyricsSync();
-    if (!_lyricsLines.length || !_maxNPOpen || !_maxNPLyricsVisible) return;
-    _maxLyricsSyncInterval = setInterval(() => {
-      if (audio.paused) return;
-      syncMaxLyrics();
-    }, 100);
+    _maxLyricsSyncActive = true;
+    _startLyricsSyncLoop();
   }
 
   function stopMaxLyricsSync() {
-    if (_maxLyricsSyncInterval) {
-      clearInterval(_maxLyricsSyncInterval);
-      _maxLyricsSyncInterval = null;
-    }
+    _maxLyricsSyncActive = false;
+  }
+
+  // ─── Unified lyrics sync loop (single RAF for both panels) ───
+  let _lyricsSyncRAF = null;
+  let _lyricsSyncLastTime = 0;
+  function _startLyricsSyncLoop() {
+    if (_lyricsSyncRAF) return; // already running
+    const tick = (now) => {
+      if (!_lyricsSyncActive && !_maxLyricsSyncActive) {
+        _lyricsSyncRAF = null;
+        return; // both stopped — exit loop
+      }
+      // Throttle to ~100ms (10 fps) to match previous interval behavior
+      if (now - _lyricsSyncLastTime >= 100) {
+        _lyricsSyncLastTime = now;
+        if (!audio.paused) {
+          if (_lyricsSyncActive && _lyricsLines.length) syncLyrics();
+          if (_maxLyricsSyncActive && _lyricsLines.length && _maxNPOpen && _maxNPLyricsVisible) syncMaxLyrics();
+        }
+      }
+      _lyricsSyncRAF = requestAnimationFrame(tick);
+    };
+    _lyricsSyncRAF = requestAnimationFrame(tick);
   }
 
   function syncMaxLyrics() {
@@ -5386,8 +5421,9 @@
     else updateSyncStatus('Synced just now');
   }
 
-  // Flush any pending cloud save before the window closes
+  // Flush any pending saves before the window closes
   window.snowify.onBeforeClose(async () => {
+    _flushSaveState(); // flush debounced localStorage write
     if (_cloudSaveTimeout) {
       clearTimeout(_cloudSaveTimeout);
       _cloudSaveTimeout = null;
