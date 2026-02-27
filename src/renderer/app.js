@@ -625,6 +625,10 @@
         const id = card.dataset.artistId;
         if (id) openArtistPage(id);
       });
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showArtistContextMenu(e, card.dataset.artistId, card.querySelector('.search-artist-name')?.textContent || '');
+      });
     });
   }
 
@@ -790,7 +794,13 @@
     container.querySelectorAll('.track-row').forEach(row => {
       const idx = parseInt(row.dataset.index);
       const track = tracks[idx];
-      row.addEventListener('click', () => playFromList(tracks, idx, sourcePlaylistId));
+      row.addEventListener('click', () => {
+        if (context === 'playlist' || context === 'album') {
+          playFromList(tracks, idx, sourcePlaylistId);
+        } else {
+          playFromList([track], 0);
+        }
+      });
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         showContextMenu(e, tracks[idx]);
@@ -927,8 +937,18 @@
         case 'start-radio': {
           const upNexts = await window.snowify.getUpNexts(track.id);
           if (upNexts.length) {
-            playFromList([track, ...upNexts.filter(t => t.id !== track.id)], 0);
-            showToast('Radio started');
+            const alreadyPlaying = state.isPlaying && state.queue[state.queueIndex]?.id === track.id;
+            if (alreadyPlaying) {
+              const remaining = upNexts.filter(t => t.id !== track.id);
+              state.queue = [track, ...remaining];
+              state.originalQueue = [...state.queue];
+              state.queueIndex = 0;
+              renderQueue();
+              showToast('Radio started');
+            } else {
+              playFromList([track, ...upNexts.filter(t => t.id !== track.id)], 0);
+              showToast('Radio started');
+            }
           } else {
             showToast('Could not start radio');
           }
@@ -1008,6 +1028,7 @@
     menu.innerHTML = `
       <div class="context-menu-item" data-action="play">${playLabel}</div>
       <div class="context-menu-item" data-action="shuffle">Shuffle Play</div>
+      <div class="context-menu-item" data-action="start-radio">Start Radio</div>
       <div class="context-menu-divider"></div>
       <div class="context-menu-item" data-action="${saved ? 'remove' : 'save'}">${saved ? 'Remove from library' : 'Save as Playlist'}</div>
       ${copyLink ? '<div class="context-menu-item" data-action="share">Copy Link</div>' : ''}
@@ -1031,6 +1052,17 @@
       } else if (action === 'share' && copyLink) {
         navigator.clipboard.writeText(copyLink);
         showToast('Link copied to clipboard');
+      } else if (action === 'start-radio') {
+        const tracks = await loadTracks();
+        if (!tracks?.length) { showToast(errorMsg); removeContextMenu(); return; }
+        const seed = tracks[0];
+        const upNexts = await window.snowify.getUpNexts(seed.id);
+        if (upNexts.length) {
+          playFromList([seed, ...upNexts.filter(t => t.id !== seed.id)], 0);
+          showToast('Radio started');
+        } else {
+          showToast('Could not start radio');
+        }
       } else if (action === 'play' || action === 'shuffle' || action === 'save') {
         const tracks = await loadTracks();
         if (!tracks?.length) { showToast(errorMsg); removeContextMenu(); return; }
@@ -1047,6 +1079,45 @@
           saveState();
           renderPlaylists();
           showToast(`Saved "${name}" with ${tracks.length} songs`);
+        }
+      }
+      removeContextMenu();
+    });
+
+    setTimeout(() => {
+      document.addEventListener('click', removeContextMenu, { once: true });
+    }, 10);
+  }
+
+  // ─── Context menu for artists ───
+  function showArtistContextMenu(e, artistId, artistName) {
+    removeContextMenu();
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    menu.innerHTML = `
+      <div class="context-menu-item" data-action="start-radio">Start Radio</div>
+    `;
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
+    if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
+
+    menu.addEventListener('click', async (ev) => {
+      const item = ev.target.closest('.context-menu-item');
+      if (!item) return;
+      if (item.dataset.action === 'start-radio') {
+        showToast('Loading radio...');
+        const info = await window.snowify.artistInfo(artistId);
+        const seed = info?.topSongs?.[0];
+        if (!seed) { showToast('Could not start radio'); removeContextMenu(); return; }
+        const upNexts = await window.snowify.getUpNexts(seed.id);
+        if (upNexts.length) {
+          playFromList([seed, ...upNexts.filter(t => t.id !== seed.id)], 0);
+          showToast('Radio started');
+        } else {
+          showToast('Could not start radio');
         }
       }
       removeContextMenu();
@@ -1138,6 +1209,11 @@
     }
     updatePlayButton();
     updateTrackHighlight();
+
+    // Pre-fill queue with autoplay recommendations if no upcoming tracks
+    if (state.autoplay && state.queueIndex >= state.queue.length - 1) {
+      smartQueueFill({ silent: true });
+    }
   }
 
   function prefetchNextTrack() {
@@ -1230,11 +1306,9 @@
     renderQueue();
   }
 
-  async function smartQueueFill() {
+  async function smartQueueFill({ silent = false } = {}) {
     const current = state.queue[state.queueIndex];
     if (!current) return;
-
-    showToast('Autoplay: finding similar songs...');
 
     try {
       const queueIds = new Set(state.queue.map(t => t.id));
@@ -1261,9 +1335,10 @@
       }
 
       if (!pool.length) {
-        showToast('Autoplay: no similar songs found');
-        state.isPlaying = false;
-        updatePlayButton();
+        if (!silent) {
+          state.isPlaying = false;
+          updatePlayButton();
+        }
         return;
       }
 
@@ -1284,17 +1359,22 @@
       const newTracks = pool.slice(0, Math.max(maxAdd, 10));
 
       state.queue.push(...newTracks);
-      state.queueIndex++;
-      state.playingPlaylistId = null;
-      updatePlaylistHighlight();
-      playTrack(state.queue[state.queueIndex]);
-      renderQueue();
-      showToast(`Autoplay: added ${newTracks.length} songs`);
+
+      if (silent) {
+        renderQueue();
+      } else {
+        state.queueIndex++;
+        state.playingPlaylistId = null;
+        updatePlaylistHighlight();
+        playTrack(state.queue[state.queueIndex]);
+        renderQueue();
+      }
     } catch (err) {
       console.error('Autoplay error:', err);
-      showToast('Autoplay failed');
-      state.isPlaying = false;
-      updatePlayButton();
+      if (!silent) {
+        state.isPlaying = false;
+        updatePlayButton();
+      }
     }
   }
 
@@ -2256,8 +2336,18 @@
         case 'start-radio': {
           const upNexts = await window.snowify.getUpNexts(track.id);
           if (upNexts.length) {
-            playFromList([track, ...upNexts.filter(t => t.id !== track.id)], 0);
-            showToast('Radio started');
+            const alreadyPlaying = state.isPlaying && state.queue[state.queueIndex]?.id === track.id;
+            if (alreadyPlaying) {
+              const remaining = upNexts.filter(t => t.id !== track.id);
+              state.queue = [track, ...remaining];
+              state.originalQueue = [...state.queue];
+              state.queueIndex = 0;
+              renderQueue();
+              showToast('Radio started');
+            } else {
+              playFromList([track, ...upNexts.filter(t => t.id !== track.id)], 0);
+              showToast('Radio started');
+            }
           } else {
             showToast('Could not start radio');
           }
@@ -3120,7 +3210,7 @@
     content.querySelectorAll('.top-song-item').forEach(item => {
       const track = topSongsList.find(t => t.id === item.dataset.trackId);
       if (!track) return;
-      item.addEventListener('click', () => playFromList(topSongsList, topSongsList.indexOf(track)));
+      item.addEventListener('click', () => playFromList([track], 0));
       bindArtistLinks(item);
       item.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -3131,6 +3221,10 @@
     // Top artists
     content.querySelectorAll('.top-artist-card').forEach(card => {
       card.addEventListener('click', () => openArtistPage(card.dataset.artistId));
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showArtistContextMenu(e, card.dataset.artistId, card.querySelector('.top-artist-name')?.textContent || '');
+      });
     });
 
     // New music videos
@@ -3754,6 +3848,10 @@
         card.addEventListener('click', () => {
           const id = card.dataset.artistId;
           if (id) openArtistPage(id);
+        });
+        card.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showArtistContextMenu(e, card.dataset.artistId, card.querySelector('.similar-artist-name')?.textContent || '');
         });
       });
     }
@@ -4922,6 +5020,8 @@
       <div class="context-menu-divider"></div>
       <div class="context-menu-item" data-action="play-next">Play Next</div>
       <div class="context-menu-item" data-action="add-queue">Add to Queue</div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" data-action="start-radio">Start Radio</div>
       ${playlistSection}
       <div class="context-menu-divider"></div>
       <div class="context-menu-item" data-action="share">Copy Link</div>
@@ -4929,7 +5029,7 @@
 
     positionContextMenu(menu);
 
-    menu.addEventListener('click', (ev) => {
+    menu.addEventListener('click', async (ev) => {
       const item = ev.target.closest('[data-action]');
       if (!item) return;
       const action = item.dataset.action;
@@ -4950,6 +5050,16 @@
         case 'toggle-playlist':
           handleTogglePlaylist(item.dataset.pid, track);
           break;
+        case 'start-radio': {
+          const upNexts = await window.snowify.getUpNexts(track.id);
+          if (upNexts.length) {
+            playFromList([track, ...upNexts.filter(t => t.id !== track.id)], 0);
+            showToast('Radio started');
+          } else {
+            showToast('Could not start radio');
+          }
+          break;
+        }
         case 'share':
           navigator.clipboard.writeText(`https://music.youtube.com/watch?v=${v.id}`);
           showToast('Link copied to clipboard');
